@@ -50,7 +50,7 @@ func main() {
 
 	go func() {
 		var opts mq.Options
-		opts.ClientFactory = func() mq.Client { return client }
+		opts.Client = client.ReceiveMessage
 		opts.Ctx = ctx
 		opts.Handler = func(rcvd mq.Message) {
 			defer func(start time.Time) {
@@ -116,7 +116,7 @@ func NewSQSClient(opts Options) *SQSClient {
 	return res
 }
 
-func (obj *SQSClient) ReceiveMessage() (mq.ReceiveMessageOutput, error) {
+func (obj *SQSClient) ReceiveMessage() (mq.ReceiverOutput, error) {
 	input := &sqs.ReceiveMessageInput{}
 
 	input.MaxNumberOfMessages = 10

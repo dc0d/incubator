@@ -2,16 +2,13 @@ package mq
 
 type (
 	MessageHandler func(msg Message)
-	ClientFactory  func() Client
+
+	// MessageReceiver is the MQ client that returns batches of messages.
+	MessageReceiver func() (ReceiverOutput, error)
 )
 
-type Client interface {
-	// ReceiveMessage returns batches of messages.
-	ReceiveMessage() (ReceiveMessageOutput, error)
-}
-
 type (
-	ReceiveMessageOutput = interface {
+	ReceiverOutput = interface {
 		Messages() []Message
 	}
 
