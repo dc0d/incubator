@@ -21,7 +21,7 @@ func Test_Options(t *testing.T) {
 		var sut Options
 
 		sut.Ctx = context.TODO()
-		sut.ClientFactory = func() Client { return &ClientMock{} }
+		sut.Client = func() (ReceiverOutput, error) { panic("n/a") }
 
 		assert.PanicsWithValue(t,
 			"Handler must be provided",
@@ -43,7 +43,7 @@ func Test_Options(t *testing.T) {
 		var sut Options
 
 		sut.Handler = func(msg Message) { panic("n/a") }
-		sut.ClientFactory = func() Client { return &ClientMock{} }
+		sut.Client = func() (ReceiverOutput, error) { panic("n/a") }
 
 		assert.PanicsWithValue(t,
 			"Ctx must be provided",
@@ -69,12 +69,10 @@ func Test_Consumer_should_call_handler_on_receiving_each_new_message(t *testing.
 	opts.Ctx = context.TODO()
 	opts.Handler = func(msg Message) { actualMessage = msg.(string) }
 
-	client := &ClientMock{}
-	client.ReceiveMessageFunc = func() (ReceiveMessageOutput, error) {
+	opts.Client = func() (ReceiverOutput, error) {
 		var output receiveMessageOutputFunc = func() []Message { return []Message{expectedMessage} }
 		return output, nil
 	}
-	opts.ClientFactory = func() Client { return client }
 
 	worker = New(opts)
 	worker.Start()
@@ -89,8 +87,6 @@ func Test_Consumer_should_call_handler_on_receiving_each_new_message(t *testing.
 }
 
 func Test_Consumer_should_call_handler_for_each_message_concurrently(t *testing.T) {
-	t.Parallel()
-
 	var (
 		worker *Consumer
 		opts   Options
@@ -121,8 +117,7 @@ func Test_Consumer_should_call_handler_for_each_message_concurrently(t *testing.
 	}
 
 	counter := 0
-	client := &ClientMock{}
-	client.ReceiveMessageFunc = func() (ReceiveMessageOutput, error) {
+	opts.Client = func() (ReceiverOutput, error) {
 		var output receiveMessageOutputFunc = func() []Message {
 			var result []Message
 
@@ -136,7 +131,6 @@ func Test_Consumer_should_call_handler_for_each_message_concurrently(t *testing.
 
 		return output, nil
 	}
-	opts.ClientFactory = func() Client { return client }
 
 	worker = New(opts)
 	worker.Start()
@@ -144,6 +138,10 @@ func Test_Consumer_should_call_handler_for_each_message_concurrently(t *testing.
 	<-handlerTriggered
 
 	assertHandlerCalledExpectedNumberOfTimes := func() bool {
+		select {
+		case <-handlerTriggered:
+		default:
+		}
 		return atomic.LoadInt64(&handlerCalls) == numberOfMessagesInTheQueue
 	}
 	assert.Eventuallyf(t,
@@ -154,8 +152,6 @@ func Test_Consumer_should_call_handler_for_each_message_concurrently(t *testing.
 }
 
 func Test_Consumer_should_stop_when_the_context_is_canceled(t *testing.T) {
-	t.Parallel()
-
 	var (
 		worker *Consumer
 		opts   Options
@@ -166,11 +162,9 @@ func Test_Consumer_should_stop_when_the_context_is_canceled(t *testing.T) {
 	opts.Ctx = ctx
 	opts.Handler = func(msg Message) {}
 
-	client := &ClientMock{}
-	client.ReceiveMessageFunc = func() (ReceiveMessageOutput, error) {
+	opts.Client = func() (ReceiverOutput, error) {
 		return nil, nil
 	}
-	opts.ClientFactory = func() Client { return client }
 
 	worker = New(opts)
 	worker.Start()
@@ -201,8 +195,7 @@ func Test_Consumer_should_continue_to_receive_after_error_when_receiving_message
 	opts.Handler = func(msg Message) { actualMessage = msg.(string) }
 
 	count := 0
-	client := &ClientMock{}
-	client.ReceiveMessageFunc = func() (ReceiveMessageOutput, error) {
+	opts.Client = func() (ReceiverOutput, error) {
 		count++
 		if count < 10 {
 			return nil, errors.New("some error")
@@ -211,7 +204,6 @@ func Test_Consumer_should_continue_to_receive_after_error_when_receiving_message
 		var output receiveMessageOutputFunc = func() []Message { return []Message{expectedMessage} }
 		return output, nil
 	}
-	opts.ClientFactory = func() Client { return client }
 
 	worker = New(opts)
 	worker.Start()
@@ -246,8 +238,7 @@ func Test_Consumer_should_continue_if_a_handler_panics(t *testing.T) {
 	}
 
 	count := 0
-	client := &ClientMock{}
-	client.ReceiveMessageFunc = func() (ReceiveMessageOutput, error) {
+	opts.Client = func() (ReceiverOutput, error) {
 		if atomic.LoadInt64(&handlerCalls) >= 3 {
 			select {}
 		}
@@ -261,7 +252,6 @@ func Test_Consumer_should_continue_if_a_handler_panics(t *testing.T) {
 		}
 		return output, nil
 	}
-	opts.ClientFactory = func() Client { return client }
 
 	worker = New(opts)
 	worker.Start()
@@ -285,8 +275,7 @@ func Test_Consumer_should_respawn_after_specific_number_of_messages_handled(t *t
 	opts.Handler = func(msg Message) {}
 
 	var messagesFromQueue int64
-	client := &ClientMock{}
-	client.ReceiveMessageFunc = func() (ReceiveMessageOutput, error) {
+	opts.Client = func() (ReceiverOutput, error) {
 		defer func() { atomic.AddInt64(&messagesFromQueue, 1) }()
 		if atomic.LoadInt64(&messagesFromQueue) > 20 {
 			select {}
@@ -295,7 +284,6 @@ func Test_Consumer_should_respawn_after_specific_number_of_messages_handled(t *t
 		var output receiveMessageOutputFunc = func() []Message { return []Message{"a message"} }
 		return output, nil
 	}
-	opts.ClientFactory = func() Client { return client }
 
 	opts.RespawnAfter.Count = 10
 
@@ -323,12 +311,10 @@ func Test_Consumer_should_respawn_after_specific_time_has_elapsed(t *testing.T) 
 	opts.Ctx = context.TODO()
 	opts.Handler = func(msg Message) {}
 
-	client := &ClientMock{}
-	client.ReceiveMessageFunc = func() (ReceiveMessageOutput, error) {
+	opts.Client = func() (ReceiverOutput, error) {
 		var output receiveMessageOutputFunc = func() []Message { return []Message{"a message"} }
 		return output, nil
 	}
-	opts.ClientFactory = func() Client { return client }
 
 	opts.RespawnAfter.Elapsed = time.Millisecond * 50
 
@@ -375,8 +361,7 @@ func Test_Consumer_should_not_start_new_handlers_when_the_number_of_in_flight_me
 		time.Sleep(time.Millisecond * 50)
 	}
 
-	client := &ClientMock{}
-	client.ReceiveMessageFunc = func() (ReceiveMessageOutput, error) {
+	opts.Client = func() (ReceiverOutput, error) {
 		var output receiveMessageOutputFunc = func() []Message {
 			var result []Message
 			for i := 0; i < maxInFlight; i++ {
@@ -387,7 +372,6 @@ func Test_Consumer_should_not_start_new_handlers_when_the_number_of_in_flight_me
 		}
 		return output, nil
 	}
-	opts.ClientFactory = func() Client { return client }
 
 	opts.MaxInFlight = maxInFlight
 

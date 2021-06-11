@@ -8,11 +8,11 @@ import (
 
 // Consumer is a consumer worker that processes the messages that it receives.
 type Consumer struct {
-	ctx           context.Context
-	clientFactory ClientFactory
-	handler       MessageHandler
-	maxInFlight   int
-	respawnAfter  struct {
+	ctx          context.Context
+	client       MessageReceiver
+	handler      MessageHandler
+	maxInFlight  int
+	respawnAfter struct {
 		Count   int
 		Elapsed time.Duration
 	}
@@ -27,11 +27,11 @@ func New(opts Options) *Consumer {
 	opts.validate()
 
 	res := &Consumer{
-		ctx:           opts.Ctx,
-		clientFactory: opts.ClientFactory,
-		handler:       opts.Handler,
-		respawnAfter:  opts.RespawnAfter,
-		maxInFlight:   opts.MaxInFlight,
+		ctx:          opts.Ctx,
+		client:       opts.Client,
+		handler:      opts.Handler,
+		respawnAfter: opts.RespawnAfter,
+		maxInFlight:  opts.MaxInFlight,
 	}
 
 	if res.maxInFlight > 0 {
@@ -70,7 +70,7 @@ func (obj *Consumer) loop() {
 			return
 		}
 
-		output, err := obj.clientFactory().ReceiveMessage()
+		output, err := obj.client()
 		if err != nil {
 			continue
 		}
@@ -211,11 +211,11 @@ func (obj *throttler) throttle() {
 }
 
 type Options struct {
-	Ctx           context.Context
-	ClientFactory ClientFactory
-	Handler       MessageHandler
-	MaxInFlight   int
-	RespawnAfter  struct {
+	Ctx          context.Context
+	Client       MessageReceiver
+	Handler      MessageHandler
+	MaxInFlight  int
+	RespawnAfter struct {
 		Count   int
 		Elapsed time.Duration
 	}
@@ -226,7 +226,7 @@ func (obj *Options) validate() {
 		panic("Handler must be provided")
 	}
 
-	if obj.ClientFactory == nil {
+	if obj.Client == nil {
 		panic("Client must be provided")
 	}
 
